@@ -45,7 +45,6 @@ class LoginActivity : AppCompatActivity() {
         if (currentVersion > lastRunVersion) {
             pref.edit().putInt("LAST_RUN_VERSION", currentVersion).apply()
             isUpdate = true
-            // If update, we show LoginActivity (continue to setContentView)
         }
 
         // 3. Auto-login check (skip if it's an update)
@@ -57,9 +56,6 @@ class LoginActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_login)
         
-        // Check for backend version updates as usual
-        checkAppVersion()
-
         val etUsername = findViewById<TextInputEditText>(R.id.etUsername)
         val etPassword = findViewById<TextInputEditText>(R.id.etPassword)
         val btnLogin = findViewById<Button>(R.id.btnLogin)
@@ -115,51 +111,4 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkAppVersion() {
-        RetrofitClient.instance.getAppVersion().enqueue(object : Callback<AppVersionResponse> {
-            override fun onResponse(call: Call<AppVersionResponse>, response: Response<AppVersionResponse>) {
-                if (isFinishing || isDestroyed) return
-                
-                if (response.isSuccessful) {
-                    val versionInfo = response.body()
-                    val latestVersion = versionInfo?.latestVersion ?: "1.0"
-                    val forceUpdate = versionInfo?.forceUpdate ?: false
-                    val apkUrl = versionInfo?.apkUrl
-                    
-                    val currentVersion = try {
-                        packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
-                    } catch (e: Exception) {
-                        "1.0"
-                    }
-
-                    android.util.Log.d("UPDATE_CHECK", "Current: $currentVersion, Latest: $latestVersion, Force: $forceUpdate")
-
-                    if (forceUpdate && currentVersion != latestVersion) {
-                        android.util.Log.d("UPDATE_CHECK", "Showing Update Dialog")
-                        showUpdateDialog(apkUrl)
-                    }
-                }
-            }
-            override fun onFailure(call: Call<AppVersionResponse>, t: Throwable) {
-                // Ignore failure for version check
-            }
-        })
-    }
-
-    private fun showUpdateDialog(apkUrl: String?) {
-        if (isFinishing || isDestroyed) return
-        
-        AlertDialog.Builder(this)
-            .setTitle("New Update Available")
-            .setMessage("Please update the app to the latest version to continue using all features.")
-            .setPositiveButton("Update Now") { _, _ ->
-                apkUrl?.let {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
-                    startActivity(intent)
-                }
-            }
-            .setNegativeButton("Later", null)
-            .setCancelable(true)
-            .show()
-    }
 }

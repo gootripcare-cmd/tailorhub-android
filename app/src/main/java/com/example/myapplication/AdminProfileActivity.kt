@@ -1,13 +1,16 @@
 package com.example.myapplication
 
-import android.content.Context
-import android.content.Intent
-import android.os.Bundle
+import android.net.Uri
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import com.google.android.material.button.MaterialButton
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 class AdminProfileActivity : AppCompatActivity() {
 
@@ -61,5 +64,51 @@ class AdminProfileActivity : AppCompatActivity() {
             // Recreate activity to apply theme change
             recreate()
         }
+
+        // Check for new version when profile is opened
+        checkAppVersion()
+    }
+
+    private fun checkAppVersion() {
+        RetrofitClient.instance.getAppVersion().enqueue(object : Callback<AppVersionResponse> {
+            override fun onResponse(call: Call<AppVersionResponse>, response: Response<AppVersionResponse>) {
+                if (isFinishing || isDestroyed) return
+                
+                if (response.isSuccessful) {
+                    val versionInfo = response.body()
+                    val latestVersion = versionInfo?.latestVersion ?: "1.0"
+                    val forceUpdate = versionInfo?.forceUpdate ?: false
+                    val apkUrl = versionInfo?.apkUrl
+                    
+                    val currentVersion = try {
+                        packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
+                    } catch (e: Exception) {
+                        "1.0"
+                    }
+
+                    if (forceUpdate && currentVersion != latestVersion) {
+                        showUpdateDialog(apkUrl)
+                    }
+                }
+            }
+            override fun onFailure(call: Call<AppVersionResponse>, t: Throwable) {}
+        })
+    }
+
+    private fun showUpdateDialog(apkUrl: String?) {
+        if (isFinishing || isDestroyed) return
+        
+        AlertDialog.Builder(this)
+            .setTitle("New Update Available")
+            .setMessage("Please update the app to the latest version to continue using all features.")
+            .setPositiveButton("Update Now") { _, _ ->
+                apkUrl?.let {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                    startActivity(intent)
+                }
+            }
+            .setNegativeButton("Later", null)
+            .setCancelable(true)
+            .show()
     }
 }
