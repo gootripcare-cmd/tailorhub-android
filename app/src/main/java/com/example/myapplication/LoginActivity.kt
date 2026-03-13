@@ -103,7 +103,10 @@ class LoginActivity : AppCompatActivity() {
                         "1.0"
                     }
 
+                    android.util.Log.d("UPDATE_CHECK", "Current: $currentVersion, Latest: $latestVersion, Force: $forceUpdate")
+
                     if (forceUpdate && currentVersion != latestVersion) {
+                        android.util.Log.d("UPDATE_CHECK", "Showing Update Dialog")
                         showUpdateDialog(apkUrl)
                     }
                 }
