@@ -2,9 +2,11 @@ package com.example.myapplication
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.textfield.TextInputEditText
 import retrofit2.Call
@@ -16,11 +18,13 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // CHECK DEVELOPMENT MODE
-        val sharedPref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
-        if (sharedPref.getBoolean("DEV_MODE", false)) {
-            Toast.makeText(this, "Login Disabled: Development Mode is ON", Toast.LENGTH_LONG).show()
-            startActivity(Intent(this, HomeActivity::class.java))
+        // --- 1. Version Check ---
+        checkAppVersion()
+
+        // --- 2. Auto-login check ---
+        val pref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
+        if (pref.contains("USER_ID")) {
+            startActivity(Intent(this, MainActivity::class.java))
             finish()
             return
         }
@@ -54,10 +58,17 @@ class LoginActivity : AppCompatActivity() {
                         val loginResponse = response.body()
                         if (loginResponse?.status == "success") {
                             val pref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
-                            pref.edit().putInt("USER_ID", loginResponse.userId ?: 1).apply()
+                            pref.edit().apply {
+                                putInt("USER_ID", loginResponse.userId ?: 1)
+                                putString("USER_NAME", loginResponse.fullName ?: "Tailor Master")
+                                putString("USER_MOBILE", loginResponse.mobileNumber ?: "")
+                                apply()
+                            }
 
                             Toast.makeText(this@LoginActivity, "Login Successful", Toast.LENGTH_SHORT).show()
-                            startActivity(Intent(this@LoginActivity, HomeActivity::class.java))
+                            val intent = Intent(this@LoginActivity, MainActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
                             finish()
                         } else {
                             Toast.makeText(this@LoginActivity, loginResponse?.message ?: "Invalid Credentials", Toast.LENGTH_LONG).show()
@@ -73,5 +84,50 @@ class LoginActivity : AppCompatActivity() {
                 }
             })
         }
+    }
+
+    private fun checkAppVersion() {
+        RetrofitClient.instance.getAppVersion().enqueue(object : Callback<AppVersionResponse> {
+            override fun onResponse(call: Call<AppVersionResponse>, response: Response<AppVersionResponse>) {
+                if (isFinishing || isDestroyed) return
+                
+                if (response.isSuccessful) {
+                    val versionInfo = response.body()
+                    val latestVersion = versionInfo?.latestVersion ?: "1.0"
+                    val forceUpdate = versionInfo?.forceUpdate ?: false
+                    val apkUrl = versionInfo?.apkUrl
+                    
+                    val currentVersion = try {
+                        packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
+                    } catch (e: Exception) {
+                        "1.0"
+                    }
+
+                    if (forceUpdate && currentVersion != latestVersion) {
+                        showUpdateDialog(apkUrl)
+                    }
+                }
+            }
+            override fun onFailure(call: Call<AppVersionResponse>, t: Throwable) {
+                // Ignore failure for version check
+            }
+        })
+    }
+
+    private fun showUpdateDialog(apkUrl: String?) {
+        if (isFinishing || isDestroyed) return
+        
+        AlertDialog.Builder(this)
+            .setTitle("New Update Available")
+            .setMessage("Please update the app to the latest version to continue using all features.")
+            .setPositiveButton("Update Now") { _, _ ->
+                apkUrl?.let {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                    startActivity(intent)
+                }
+            }
+            .setNegativeButton("Later", null)
+            .setCancelable(true)
+            .show()
     }
 }

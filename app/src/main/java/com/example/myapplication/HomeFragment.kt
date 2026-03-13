@@ -1,73 +1,69 @@
 package com.example.myapplication
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import kotlin.concurrent.thread
 
-class HomeActivity : AppCompatActivity() {
+class HomeFragment : Fragment() {
 
     private lateinit var tvCustomerListTitle: TextView
     private lateinit var rvCustomers: RecyclerView
     private lateinit var adapter: CustomerAdapter
     private lateinit var etSearch: TextInputEditText
-    
     private var allCustomers = mutableListOf<CustomerDisplayModel>()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_home)
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        val view = inflater.inflate(R.layout.activity_home, container, false)
+        
+        // Hide the navigation bar because it's now in the activity
+        view.findViewById<View>(R.id.bottomNavigation)?.visibility = View.GONE
 
-        tvCustomerListTitle = findViewById(R.id.tvCustomerListTitle)
-        rvCustomers = findViewById(R.id.rvCustomers)
-        etSearch = findViewById(R.id.etSearch)
+        tvCustomerListTitle = view.findViewById(R.id.tvCustomerListTitle)
+        rvCustomers = view.findViewById(R.id.rvCustomers)
+        etSearch = view.findViewById(R.id.etSearch)
 
-        rvCustomers.layoutManager = LinearLayoutManager(this)
+        val currentContext = context ?: return view
+        rvCustomers.layoutManager = LinearLayoutManager(currentContext)
         adapter = CustomerAdapter(emptyList(), { customer ->
-            val intent = Intent(this, CustomerProfileActivity::class.java)
-            intent.putExtra("CUSTOMER_NAME", customer.name)
-            intent.putExtra("CUSTOMER_MOBILE", customer.mobile)
-            startActivity(intent)
+            context?.let { ctx ->
+                val intent = Intent(ctx, CustomerProfileActivity::class.java)
+                intent.putExtra("CUSTOMER_NAME", customer.name)
+                intent.putExtra("CUSTOMER_MOBILE", customer.mobile)
+                startActivity(intent)
+            }
         }, { mobile ->
-            showDeleteConfirmation(mobile)
+            if (isAdded) showDeleteConfirmation(mobile)
         })
         rvCustomers.adapter = adapter
 
-
-
-        val navBar = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-        navBar?.setupGlobalNavigation(this, R.id.nav_home)
-
-        setupAlphabetFilters()
+        setupAlphabetFilters(view)
         setupSearch()
-        
-        // Focus solely on the synced data.
-        // Then try to sync with backend
         refreshAllData()
+
+        return view
     }
 
     override fun onResume() {
         super.onResume()
-
         refreshAllData()
-        findViewById<BottomNavigationView>(R.id.bottomNavigation)?.selectedItemId = R.id.nav_home
     }
 
     private fun setupSearch() {
@@ -96,31 +92,25 @@ class HomeActivity : AppCompatActivity() {
     private fun refreshAllData() {
         RetrofitClient.instance.getAllCustomers().enqueue(object : Callback<List<CustomerResponse>> {
             override fun onResponse(call: Call<List<CustomerResponse>>, response: Response<List<CustomerResponse>>) {
-                if (response.isSuccessful) {
+                if (isAdded && response.isSuccessful) {
                     val backendData = response.body() ?: emptyList()
-                    if (backendData.isNotEmpty()) {
-                        val newList = backendData.map { 
-                            CustomerDisplayModel(
-                                it.id?.toString() ?: "0", 
-                                it.name ?: "Unknown", 
-                                it.mobileNumber ?: "No Number", 
-                                it.length ?: ""
-                            ) 
-                        }
-                        updateUI(newList, " (Synced)")
+                    val newList = backendData.map { 
+                        CustomerDisplayModel(
+                            id = it.id?.toString() ?: "0", 
+                            name = it.name ?: "Unknown", 
+                            mobile = it.mobileNumber ?: "No Number", 
+                            length = it.length ?: ""
+                        ) 
                     }
-                } else {
-                    Log.e("HOME_DEBUG", "Backend response error: ${response.code()}")
+                    updateUI(newList, " (Synced)")
                 }
             }
 
             override fun onFailure(call: Call<List<CustomerResponse>>, t: Throwable) {
-                Log.e("HOME_DEBUG", "Network failure: ${t.message}")
-                // Fallback is already handled by fetchFromLocal() called in onCreate/onResume
+                Log.e("HOME_FRAG", "Network failure: ${t.message}")
             }
         })
     }
-
 
     private fun updateUI(list: List<CustomerDisplayModel>, source: String) {
         allCustomers = list.sortedBy { it.name.lowercase() }.toMutableList()
@@ -131,21 +121,31 @@ class HomeActivity : AppCompatActivity() {
             tvCustomerListTitle.text = "All Customers$source"
             adapter.updateData(allCustomers)
         }
-        
-        // Handle empty state
-        findViewById<View>(R.id.rvCustomers).visibility = if (allCustomers.isEmpty()) View.GONE else View.VISIBLE
+        rvCustomers.visibility = if (allCustomers.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun setupAlphabetFilters() {
-        findViewById<Button>(R.id.btnAll)?.setOnClickListener {
+    private fun setupAlphabetFilters(view: View) {
+        view.findViewById<Button>(R.id.btnAll)?.setOnClickListener {
             etSearch.text?.clear()
             adapter.updateData(allCustomers)
         }
-        // ... (rest of alphabet filter logic)
+        val currentContext = context ?: return
+        val alphabets = 'A'..'Z'
+        alphabets.forEach { char ->
+            val resId = resources.getIdentifier("btn$char", "id", currentContext.packageName)
+            if (resId != 0) {
+                view.findViewById<Button>(resId)?.setOnClickListener {
+                    val filtered = allCustomers.filter { it.name.startsWith(char, ignoreCase = true) }
+                    adapter.updateData(filtered)
+                    tvCustomerListTitle.text = "Starting with $char (${filtered.size})"
+                }
+            }
+        }
     }
 
     private fun showDeleteConfirmation(mobile: String) {
-        AlertDialog.Builder(this)
+        val ctx = context ?: return
+        AlertDialog.Builder(ctx)
             .setTitle("Delete Customer")
             .setMessage("Permanently remove this customer?")
             .setPositiveButton("Delete") { _, _ -> performFullDelete(mobile) }
@@ -156,10 +156,10 @@ class HomeActivity : AppCompatActivity() {
     private fun performFullDelete(mobile: String) {
         RetrofitClient.instance.deleteCustomer(mobile).enqueue(object : Callback<Void> {
             override fun onResponse(call: Call<Void>, response: Response<Void>) {
-                refreshAllData()
+                if (isAdded) refreshAllData()
             }
             override fun onFailure(call: Call<Void>, t: Throwable) {
-                refreshAllData()
+                if (isAdded) refreshAllData()
             }
         })
     }

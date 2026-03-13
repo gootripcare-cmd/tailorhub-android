@@ -47,18 +47,14 @@ class AddMeasurementsActivity : AppCompatActivity() {
 
     private lateinit var btnSaveMeasurements: Button
     
-    private lateinit var dbHelper: DatabaseHelper
     private var selectedGarment = "Shirt"
     private var customerMobile = ""
     private var customerId: Int = -1
     private var isEditMode: Boolean = false
-    private var lastMeasurementId: Int = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.add_measurements)
-
-        dbHelper = DatabaseHelper(this)
 
         // Initialize buttons
         btnShirt = findViewById(R.id.btnShirtProfile)
@@ -117,17 +113,45 @@ class AddMeasurementsActivity : AppCompatActivity() {
                 selectedGarment = button.text.toString()
                 selectButton(button, buttons)
                 updateMeasurementUI(selectedGarment)
-                if (isEditMode) loadLatestMeasurement()
+                if (isEditMode) {
+                    fetchMeasurementsForEdit(selectedGarment)
+                }
             }
         }
 
         // Initial UI state
         updateMeasurementUI("Shirt")
-        if (isEditMode) loadLatestMeasurement()
+        if (isEditMode) {
+            fetchMeasurementsForEdit("Shirt")
+        }
 
         btnSaveMeasurements.setOnClickListener {
             saveAndSyncData()
         }
+    }
+
+    private fun fetchMeasurementsForEdit(type: String) {
+        RetrofitClient.instance.getCustomerMeasurements(customerMobile, type).enqueue(object : Callback<MeasurementResponse> {
+            override fun onResponse(call: Call<MeasurementResponse>, response: Response<MeasurementResponse>) {
+                if (response.isSuccessful) {
+                    val m = response.body()
+                    if (m != null) {
+                        etLength.setText(m.length)
+                        etChest.setText(m.chest)
+                        etWaist.setText(m.waist)
+                        etCollar.setText(m.collar)
+                        etShoulder.setText(m.shoulder)
+                        etSleeve.setText(m.sleeve)
+                        etHip.setText(m.hip)
+                        etRise.setText(m.rise)
+                        etNotes.setText(m.notes)
+                    }
+                }
+            }
+            override fun onFailure(call: Call<MeasurementResponse>, t: Throwable) {
+                Log.e("EDIT_FETCH", "Failed to fetch for edit: ${t.message}")
+            }
+        })
     }
 
     private fun updateMeasurementUI(garmentType: String) {
@@ -227,37 +251,7 @@ class AddMeasurementsActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadLatestMeasurement() {
-        Thread {
-            val cursor = dbHelper.getLatestMeasurement(customerId, selectedGarment)
-            if (cursor.moveToFirst()) {
-                val lId = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
-                val length = cursor.getString(cursor.getColumnIndexOrThrow("length"))
-                val chest = cursor.getString(cursor.getColumnIndexOrThrow("chest"))
-                val waist = cursor.getString(cursor.getColumnIndexOrThrow("waist"))
-                val collar = cursor.getString(cursor.getColumnIndexOrThrow("collar"))
-                val shoulder = cursor.getString(cursor.getColumnIndexOrThrow("shoulder"))
-                val sleeve = cursor.getString(cursor.getColumnIndexOrThrow("sleeve"))
-                val hip = cursor.getString(cursor.getColumnIndexOrThrow("hip"))
-                val rise = cursor.getString(cursor.getColumnIndexOrThrow("rise"))
-                val notes = cursor.getString(cursor.getColumnIndexOrThrow("notes"))
-                
-                runOnUiThread {
-                    lastMeasurementId = lId
-                    etLength.setText(length)
-                    etChest.setText(chest)
-                    etWaist.setText(waist)
-                    etCollar.setText(collar)
-                    etShoulder.setText(shoulder)
-                    etSleeve.setText(sleeve)
-                    etHip.setText(hip)
-                    etRise.setText(rise)
-                    etNotes.setText(notes)
-                }
-            }
-            cursor.close()
-        }.start()
-    }
+
 
     private fun saveAndSyncData() {
         val length = etLength.text.toString().trim()
@@ -271,29 +265,15 @@ class AddMeasurementsActivity : AppCompatActivity() {
         val notes = etNotes.text.toString().trim()
         val status = "Pending" 
 
-        if (length.isEmpty() && waist.isEmpty()) {
-            Toast.makeText(this, "Required fields missing", Toast.LENGTH_SHORT).show()
+        if (length.isEmpty() && chest.isEmpty() && waist.isEmpty() && collar.isEmpty() && 
+            shoulder.isEmpty() && sleeve.isEmpty() && hip.isEmpty() && rise.isEmpty()) {
+            Toast.makeText(this, "Please enter at least one measurement", Toast.LENGTH_SHORT).show()
             return
         }
 
         btnSaveMeasurements.isEnabled = false
 
-        Thread {
-            try {
-                if (isEditMode && lastMeasurementId != -1) {
-                    dbHelper.updateMeasurement(lastMeasurementId, length, chest, waist, collar, shoulder, sleeve, hip, rise, notes, status)
-                } else {
-                    dbHelper.addMeasurement(customerId, selectedGarment, length, chest, waist, collar, shoulder, sleeve, hip, rise, notes, status)
-                }
-
-                runOnUiThread {
-                    syncWithBackend(length, chest, waist, collar, shoulder, sleeve, hip, rise, notes, status)
-                }
-            } catch (e: Exception) {
-                Log.e("SAVE_ERROR", "Error: ${e.message}")
-                runOnUiThread { btnSaveMeasurements.isEnabled = true }
-            }
-        }.start()
+        syncWithBackend(length, chest, waist, collar, shoulder, sleeve, hip, rise, notes, status)
     }
 
     private fun syncWithBackend(length: String, chest: String, waist: String, collar: String, shoulder: String, sleeve: String, hip: String, rise: String, notes: String, status: String) {
@@ -331,7 +311,7 @@ class AddMeasurementsActivity : AppCompatActivity() {
 
             override fun onFailure(call: Call<Void>, t: Throwable) {
                 btnSaveMeasurements.isEnabled = true
-                Toast.makeText(this@AddMeasurementsActivity, "Saved locally (Offline)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@AddMeasurementsActivity, "Network Connection Failed", Toast.LENGTH_SHORT).show()
                 finish()
             }
         })
