@@ -56,7 +56,6 @@ class CustomerProfileActivity : AppCompatActivity() {
     
     private lateinit var tvNotesValue: TextView
     private lateinit var tvUnifiedTitle: TextView
-    private lateinit var btnPlusIcon: ImageView
     private lateinit var btnEditUnified: TextView
     
     private lateinit var cardGarmentMain: View
@@ -128,7 +127,6 @@ class CustomerProfileActivity : AppCompatActivity() {
 
         tvNotesValue = findViewById(R.id.tvNotesValue)
         tvUnifiedTitle = findViewById(R.id.tvUnifiedGarmentTitle)
-        btnPlusIcon = findViewById(R.id.btnAddNewOrderIconUnified)
         btnEditUnified = findViewById(R.id.btnEditUnified)
 
         cardGarmentMain = findViewById(R.id.cardGarmentMain)
@@ -207,9 +205,6 @@ class CustomerProfileActivity : AppCompatActivity() {
             showGarmentPickerBottomSheet()
         }
 
-        btnPlusIcon.setOnClickListener {
-            showGarmentPickerBottomSheet()
-        }
 
         btnEditUnified.setOnClickListener {
             selectedGarment = tvUnifiedTitle.text.toString().split(" ")[0]
@@ -218,9 +213,6 @@ class CustomerProfileActivity : AppCompatActivity() {
 
         btnInProgress.setOnClickListener { updateOrderStatus("In Progress") }
         btnCompleted.setOnClickListener { updateOrderStatus("Completed") }
-        findViewById<ImageView>(R.id.btnGarmentMenu).setOnClickListener {
-            showGarmentPickerBottomSheet()
-        }
 
         fetchGarmentCounts()
     }
