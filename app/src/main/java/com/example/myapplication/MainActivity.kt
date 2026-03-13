@@ -1,12 +1,17 @@
 package com.example.myapplication
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 class MainActivity : AppCompatActivity() {
 
@@ -96,6 +101,55 @@ class MainActivity : AppCompatActivity() {
                 isSyncing = false
             }
         }
+
+        checkAppVersion()
+    }
+
+    private fun checkAppVersion() {
+        RetrofitClient.instance.getAppVersion().enqueue(object : Callback<AppVersionResponse> {
+            override fun onResponse(call: Call<AppVersionResponse>, response: Response<AppVersionResponse>) {
+                if (isFinishing || isDestroyed) return
+                
+                if (response.isSuccessful) {
+                    val versionInfo = response.body()
+                    val latestVersion = versionInfo?.latestVersion ?: "1.0"
+                    val forceUpdate = versionInfo?.forceUpdate ?: false
+                    val apkUrl = versionInfo?.apkUrl
+                    
+                    val currentVersion = try {
+                        packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
+                    } catch (e: Exception) {
+                        "1.0"
+                    }
+
+                    android.util.Log.d("UPDATE_CHECK", "Current: $currentVersion, Latest: $latestVersion, Force: $forceUpdate")
+
+                    if (forceUpdate && currentVersion != latestVersion) {
+                        showUpdateDialog(apkUrl)
+                    }
+                }
+            }
+            override fun onFailure(call: Call<AppVersionResponse>, t: Throwable) {
+                // Ignore failure
+            }
+        })
+    }
+
+    private fun showUpdateDialog(apkUrl: String?) {
+        if (isFinishing || isDestroyed) return
+        
+        AlertDialog.Builder(this)
+            .setTitle("New Update Available")
+            .setMessage("Please update the app to the latest version to continue using all features.")
+            .setPositiveButton("Update Now") { _, _ ->
+                apkUrl?.let {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                    startActivity(intent)
+                }
+            }
+            .setNegativeButton("Later", null)
+            .setCancelable(true)
+            .show()
     }
 
     override fun onNewIntent(intent: Intent) {
