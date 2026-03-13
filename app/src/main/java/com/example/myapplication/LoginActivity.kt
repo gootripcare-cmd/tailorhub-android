@@ -18,18 +18,47 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // --- 1. Version Check ---
-        checkAppVersion()
-
-        // --- 2. Auto-login check ---
         val pref = getSharedPreferences("AppPrefs", Context.MODE_PRIVATE)
-        if (pref.contains("USER_ID")) {
+        val lastRunVersion = pref.getInt("LAST_RUN_VERSION", -1)
+        val currentVersion = try {
+            val pInfo = packageManager.getPackageInfo(packageName, 0)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                pInfo.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode
+            }
+        } catch (e: Exception) {
+            0
+        }
+
+        // 1. Check for First Install
+        if (lastRunVersion == -1) {
+            pref.edit().putInt("LAST_RUN_VERSION", currentVersion).apply()
+            startActivity(Intent(this, RegisterActivity::class.java))
+            finish()
+            return
+        }
+
+        // 2. Check for App Update
+        var isUpdate = false
+        if (currentVersion > lastRunVersion) {
+            pref.edit().putInt("LAST_RUN_VERSION", currentVersion).apply()
+            isUpdate = true
+            // If update, we show LoginActivity (continue to setContentView)
+        }
+
+        // 3. Auto-login check (skip if it's an update)
+        if (!isUpdate && pref.contains("USER_ID")) {
             startActivity(Intent(this, MainActivity::class.java))
             finish()
             return
         }
 
         setContentView(R.layout.activity_login)
+        
+        // Check for backend version updates as usual
+        checkAppVersion()
 
         val etUsername = findViewById<TextInputEditText>(R.id.etUsername)
         val etPassword = findViewById<TextInputEditText>(R.id.etPassword)
