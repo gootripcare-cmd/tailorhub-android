@@ -1,6 +1,7 @@
 package com.example.myapplication
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -14,10 +15,18 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.textfield.TextInputEditText
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.IOException
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 class HomeFragment : Fragment() {
 
@@ -49,6 +58,14 @@ class HomeFragment : Fragment() {
                 intent.putExtra("CUSTOMER_MOBILE", customer.mobile)
                 startActivity(intent)
             }
+        }, { customer ->
+            context?.let { ctx ->
+                val intent = Intent(ctx, AddCustomerActivity::class.java)
+                intent.putExtra("CUSTOMER_NAME", customer.name)
+                intent.putExtra("CUSTOMER_MOBILE", customer.mobile)
+                intent.putExtra("IS_EDIT_MODE", true)
+                startActivity(intent)
+            }
         }, { mobile ->
             if (isAdded) showDeleteConfirmation(mobile)
         })
@@ -57,6 +74,7 @@ class HomeFragment : Fragment() {
         setupAlphabetFilters(view)
         setupSearch()
         refreshAllData()
+        checkAppVersion()
 
         return view
     }
@@ -162,5 +180,107 @@ class HomeFragment : Fragment() {
                 if (isAdded) refreshAllData()
             }
         })
+    }
+
+    private fun checkAppVersion() {
+        val client = okhttp3.OkHttpClient()
+        val request = Request.Builder()
+            .url("https://api.github.com/repos/dharmik264/Dhandhukiya-tailor-/releases")
+            .build()
+        
+        client.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                Log.e("AppVersion", "Failed to check app version: ${e.message}")
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                if (!response.isSuccessful) return
+                val responseData = response.body?.string() ?: return
+                
+                try {
+                    val jsonArray = org.json.JSONArray(responseData)
+                    if (jsonArray.length() == 0) return
+                    
+                    val json = jsonArray.getJSONObject(0)
+                    val latestTag = json.getString("tag_name")
+                    val latestVersion = latestTag.removePrefix("v") 
+                    
+                    Log.d("AppUpdate", "Latest Tag: $latestTag, latestVersion: $latestVersion")
+
+                    val assets = json.getJSONArray("assets")
+                    var apkUrl: String? = null
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(i)
+                        if (asset.getString("name").endsWith(".apk")) {
+                            apkUrl = asset.getString("browser_download_url")
+                            break
+                        }
+                    }
+                    
+                    activity?.runOnUiThread {
+                        if (!isAdded) return@runOnUiThread
+                        val currentVersion = try {
+                            val info = context?.packageManager?.getPackageInfo(context?.packageName ?: "", 0)
+                            Log.d("AppUpdate", "Current Version from Package: ${info?.versionName}")
+                            info?.versionName ?: "1.0"
+                        } catch (e: Exception) {
+                            "1.0"
+                        }
+                        
+                        val prefs = context?.getSharedPreferences("AppPrefs", android.content.Context.MODE_PRIVATE)
+                        val dismissedVersion = prefs?.getString("DISMISSED_VERSION", "") ?: ""
+                        
+                        // Smarter version check
+                        val isUpdateAvailable = try {
+                            val cParts = currentVersion.split(".").mapNotNull { it.toIntOrNull() }
+                            val lParts = latestVersion.split(".").mapNotNull { it.toIntOrNull() }
+                            var newer = latestVersion != currentVersion && lParts.isNotEmpty()
+                            if (lParts.isNotEmpty() && cParts.isNotEmpty()) {
+                                for (i in 0 until maxOf(cParts.size, lParts.size)) {
+                                    val c = cParts.getOrElse(i) { 0 }
+                                    val l = lParts.getOrElse(i) { 0 }
+                                    if (l > c) { newer = true; break }
+                                    if (c > l) { newer = false; break }
+                                }
+                            }
+                            newer
+                        } catch (e: Exception) {
+                            latestVersion != currentVersion
+                        }
+                        
+                        if (isUpdateAvailable && dismissedVersion != latestVersion) {
+                            showUpdateDialog(apkUrl, latestVersion, false)
+                        } else if (!isUpdateAvailable && dismissedVersion.isNotEmpty()) {
+                            prefs?.edit()?.remove("DISMISSED_VERSION")?.apply()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("AppVersion", "Error parsing release info: ${e.message}")
+                }
+            }
+        })
+    }
+
+    private fun showUpdateDialog(apkUrl: String?, latestVersion: String, forceUpdate: Boolean) {
+        val ctx = context ?: return
+        val builder = AlertDialog.Builder(ctx)
+            .setTitle("New Update Available")
+            .setMessage("Please update the app to version $latestVersion to continue using all features.")
+            .setPositiveButton("Update Now") { _, _ ->
+                apkUrl?.let {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                    startActivity(intent)
+                }
+            }
+            .setCancelable(false)
+
+        if (!forceUpdate) {
+            builder.setNegativeButton("Later") { _, _ ->
+                val prefs = ctx.getSharedPreferences("AppPrefs", android.content.Context.MODE_PRIVATE)
+                prefs.edit().putString("DISMISSED_VERSION", latestVersion).apply()
+            }
+        }
+        
+        builder.show()
     }
 }

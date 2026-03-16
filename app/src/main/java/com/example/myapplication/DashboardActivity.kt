@@ -10,6 +10,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.card.MaterialCardView
+import org.json.JSONObject
+import org.json.JSONArray
+import java.io.IOException
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlin.concurrent.thread
 
 class DashboardActivity : AppCompatActivity() {
@@ -59,8 +64,19 @@ class DashboardActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        findViewById<android.view.View>(R.id.activity_check_order)?.setOnClickListener {
+            val intent = Intent(this, CheckOrderActivity::class.java)
+            startActivity(intent)
+        }
+
+        findViewById<android.view.View>(R.id.cardAddCustomer)?.setOnClickListener {
+            val intent = Intent(this, AddCustomerActivity::class.java)
+            startActivity(intent)
+        }
+
         updateStats()
         loadRecentOrders()
+        checkAppStatus()
     }
 
     override fun onResume() {
@@ -122,5 +138,69 @@ class DashboardActivity : AppCompatActivity() {
         })
     }
 
+    private fun checkAppStatus() {
+        val tvAppStatus = findViewById<TextView>(R.id.tvAppStatus) ?: return
+        
+        val currentVersion = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
+        } catch (e: Exception) {
+            "1.0"
+        }
 
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url("https://api.github.com/repos/dharmik264/Dhandhukiya-tailor-/releases")
+            .build()
+            
+        client.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                runOnUiThread {
+                    tvAppStatus.text = "v$currentVersion"
+                }
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                val responseData = response.body?.string()
+                runOnUiThread {
+                    if (response.isSuccessful && responseData != null) {
+                        try {
+                            val jsonArray = org.json.JSONArray(responseData)
+                            if (jsonArray.length() == 0) return@runOnUiThread
+                            val json = jsonArray.getJSONObject(0)
+                            val latestVersion = json.getString("tag_name").removePrefix("v")
+                            
+                            val isUpdateAvailable = try {
+                                val cParts = currentVersion.split(".").mapNotNull { it.toIntOrNull() }
+                                val lParts = latestVersion.split(".").mapNotNull { it.toIntOrNull() }
+                                var newer = latestVersion != currentVersion && lParts.isNotEmpty()
+                                if (lParts.isNotEmpty() && cParts.isNotEmpty()) {
+                                    for (i in 0 until maxOf(cParts.size, lParts.size)) {
+                                        val c = cParts.getOrElse(i) { 0 }
+                                        val l = lParts.getOrElse(i) { 0 }
+                                        if (l > c) { newer = true; break }
+                                        if (c > l) { newer = false; break }
+                                    }
+                                }
+                                newer
+                            } catch (e: Exception) {
+                                latestVersion != currentVersion
+                            }
+                            
+                            if (!isUpdateAvailable) {
+                                tvAppStatus.text = "Updated App (v$currentVersion)"
+                                tvAppStatus.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                            } else {
+                                tvAppStatus.text = "Update Available (v$latestVersion)"
+                                tvAppStatus.setTextColor(android.graphics.Color.parseColor("#FFEB3B"))
+                            }
+                        } catch (e: Exception) {
+                            tvAppStatus.text = "v$currentVersion"
+                        }
+                    } else {
+                        tvAppStatus.text = "v$currentVersion"
+                    }
+                }
+            }
+        })
+    }
 }

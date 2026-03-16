@@ -22,13 +22,15 @@ data class CustomerDisplayModel(
 class CustomerAdapter(
     private var customers: List<CustomerDisplayModel>,
     private val onItemClick: (CustomerDisplayModel) -> Unit,
+    private val onEditClick: (CustomerDisplayModel) -> Unit,
     private val onDeleteClick: (String) -> Unit
 ) : RecyclerView.Adapter<CustomerAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tvName)
         val tvMobile: TextView = view.findViewById(R.id.tvMobile)
-        val chipStatus: Chip = view.findViewById(R.id.chipStatus)
+        val tvStatusBadge: TextView = view.findViewById(R.id.tvStatusBadge)
+        val btnEdit: ImageView = view.findViewById(R.id.btnEdit)
         val btnDelete: ImageView = view.findViewById(R.id.btnDelete)
     }
 
@@ -45,7 +47,7 @@ class CustomerAdapter(
         
         // Status Binding logic
         val status = customer.status.ifEmpty { "Pending" }
-        holder.chipStatus.text = status
+        holder.tvStatusBadge.text = status
         val statusColor = when (status.lowercase()) {
             "pending" -> Color.parseColor("#FFA500")      // Orange
             "in progress" -> Color.parseColor("#2196F3") // Blue
@@ -53,13 +55,15 @@ class CustomerAdapter(
             else -> Color.GRAY
         }
         
-        holder.chipStatus.setChipBackgroundColorResource(android.R.color.transparent)
-        holder.chipStatus.setChipStrokeColor(ColorStateList.valueOf(statusColor))
-        holder.chipStatus.setTextColor(statusColor)
-        holder.chipStatus.chipStrokeWidth = 2f
+        holder.tvStatusBadge.setTextColor(statusColor)
+        holder.tvStatusBadge.backgroundTintList = ColorStateList.valueOf(statusColor).withAlpha(26) // ~10% opacity
 
         holder.itemView.setOnClickListener {
             onItemClick(customer)
+        }
+
+        holder.btnEdit.setOnClickListener {
+            onEditClick(customer)
         }
 
         holder.btnDelete.setOnClickListener {
